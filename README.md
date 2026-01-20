@@ -10,12 +10,14 @@ A premium, modern, and "organic" UI library for Roblox script execution environm
 
 ## Usage
 
+Check out [DOCUMENTATION.md](DOCUMENTATION.md) for the full API reference.
+
+**Quick Start:**
 ```lua
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xtvoo/uilib/main/xtvoLib.lua"))()
 
 local Window = Library:CreateWindow({
-    Title = "My Script Hub",
-    TabWidth = 120
+    Title = "xtvo Hub"
 })
 
 local Tab = Window:AddTab("Main")
