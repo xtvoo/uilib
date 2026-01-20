@@ -227,8 +227,8 @@ end
 -- GAME DETECTOR
 --------------------------------------------------------------------------------
 local Games = {
-    [10449761463] = LoadFlingHub, -- Strongest Battlegrounds ("So Crying RN")
-    [0] = LoadFlingHub -- Debug Mode/Testing Place (Can change to Universal later)
+    [2119999415] = LoadFlingHub, -- So Crying RN
+    [0] = LoadFlingHub -- Debug
 }
 
 local PlaceID = game.PlaceId
