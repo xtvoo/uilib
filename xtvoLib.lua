@@ -240,6 +240,9 @@ function Library:CreateWindow(config)
     local Visible = true
     local ToggleKey = Enum.KeyCode.RightControl
     
+    -- Store connections to clean up later
+    local Connections = {}
+
     function Library:SetToggleKey(key)
         ToggleKey = key
     end
@@ -257,16 +260,20 @@ function Library:CreateWindow(config)
     end
 
     function Library:Unload()
-        ScreenGui:Destroy()
-        -- Disconnect global listeners if any
+        for _, conn in pairs(Connections) do
+            if conn then conn:Disconnect() end
+        end
+        Connections = {}
+        if ScreenGui then ScreenGui:Destroy() end
         Library.Open = false
     end
 
-    UserInputService.InputBegan:Connect(function(input, gp)
+    local ToggleListener = UserInputService.InputBegan:Connect(function(input, gp)
         if input.KeyCode == ToggleKey then
             Library:ToggleUI()
         end
     end)
+    table.insert(Connections, ToggleListener)
     
     function Window:AddTab(name)
         -- Tab Button

@@ -14,10 +14,13 @@ pcall(function()
     if isfile and isfile("matcha_ui/xtvoLib.lua") then
         Library = loadstring(readfile("matcha_ui/xtvoLib.lua"))()
     else
-        Library = loadstring(game:HttpGet(RepoURL))()
+        -- Add specific cache buster timestamp
+        Library = loadstring(game:HttpGet(RepoURL .. "?t=" .. tostring(os.time())))()
     end
 end)
-if not Library then Library = loadstring(game:HttpGet(RepoURL))() end
+if not Library then 
+    Library = loadstring(game:HttpGet(RepoURL .. "?t=" .. tostring(os.time())))() 
+end
 
 --------------------------------------------------------------------------------
 -- SERVICES & VARIABLES
