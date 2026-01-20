@@ -237,6 +237,37 @@ function Library:CreateWindow(config)
         Tabs = {}
     }
 
+    local Visible = true
+    local ToggleKey = Enum.KeyCode.RightControl
+    
+    function Library:SetToggleKey(key)
+        ToggleKey = key
+    end
+
+    function Library:ToggleUI()
+        Visible = not Visible
+        if Visible then
+            Main.Visible = true
+            Tween(Main, {0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out}, {Size = UDim2.new(0, 550, 0, 350)})
+        else
+            Tween(Main, {0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In}, {Size = UDim2.new(0, 550, 0, 0)})
+            task.wait(0.3)
+            if not Visible then Main.Visible = false end
+        end
+    end
+
+    function Library:Unload()
+        ScreenGui:Destroy()
+        -- Disconnect global listeners if any
+        Library.Open = false
+    end
+
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if input.KeyCode == ToggleKey then
+            Library:ToggleUI()
+        end
+    end)
+    
     function Window:AddTab(name)
         -- Tab Button
         local TabButton = Create("TextButton", {

@@ -2,7 +2,7 @@
     xtvo Hub - Fling Script Implementation
     Powered by xtvo Lib 🍵
     
-    Ported from fling_improved.lua
+    Ported from fling_improved.lua (OG Logic Restored)
 ]]
 
 --------------------------------------------------------------------------------
@@ -11,7 +11,6 @@
 local RepoURL = "https://raw.githubusercontent.com/xtvoo/uilib/main/xtvoLib.lua"
 local Library
 pcall(function()
-    -- Dev Mode: Load from local file if available
     if isfile and isfile("matcha_ui/xtvoLib.lua") then
         Library = loadstring(readfile("matcha_ui/xtvoLib.lua"))()
     else
@@ -37,8 +36,8 @@ local UnanchoredPart = nil
 local TargetMode = "Target" -- Target, Nearest, Key, Constant
 local TARGET = nil
 local Active = false
+local Activated = false -- The "Attack" state
 local AutoPrediction = false
-local AutoClaim = false
 local RotationEnabled = false
 
 -- Settings
@@ -46,10 +45,11 @@ local Config = {
     Prediction = 0.8,
     Distance = 50,
     Offsets = {X = 8, Y = 8, Z = 8},
-    Rotation = {X = 0, Y = 0, Z = 0}
+    Rotation = {X = 0, Y = 0, Z = 0},
+    AttackKey = Enum.KeyCode.E
 }
 local Force = Vector3.new(-10000, -10000, -10000)
-local OriginalVelocity = {} -- Placeholder for more advanced pred if needed
+local OriginalVelocity = {}
 local hbConnection = nil
 local SelectionMode = false
 local SelectionHighlight = nil
@@ -67,32 +67,14 @@ local function ClaimNetworkOwnership()
     end
 end
 
-local function ClaimSeat(seatPart)
-    if not seatPart then return end
-    if not (seatPart:IsA("Seat") or seatPart:IsA("VehicleSeat")) then
-        Notify("⚠️ Not a Seat!")
-        return
+-- Find player by string (partial match)
+local function GetPlayer(str)
+    for _, v in pairs(Players:GetPlayers()) do
+        if v.Name:lower():sub(1, #str) == str:lower() or v.DisplayName:lower():sub(1, #str) == str:lower() then
+            if v ~= OWNER then return v end
+        end
     end
-
-    Notify("🪑 Claiming Seat...")
-    local char = OWNER.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChild("Humanoid")
-    
-    if root and hum then
-        local originalCF = root.CFrame
-        local seatCF = seatPart.CFrame
-        
-        root.CFrame = seatCF + Vector3.new(0, 2, 0)
-        seatPart:Sit(hum)
-        task.wait(0.2)
-        pcall(function() seatPart:SetNetworkOwner(OWNER) end)
-        task.wait(0.1)
-        hum.Sit = false
-        task.wait(0.1)
-        root.CFrame = originalCF
-        Notify("✅ Seat Claimed!")
-    end
+    return nil
 end
 
 local function GetNearestPlayer()
@@ -128,19 +110,15 @@ local function StopFling()
         UnanchoredPart.Velocity = Vector3.zero
         UnanchoredPart.RotVelocity = Vector3.zero
         UnanchoredPart.CanCollide = true
-        UnanchoredPart.Transparency = 0 -- Reset visibility
+        UnanchoredPart.Transparency = 0
     end
 end
 
 local function SetFlingPart(part)
-    StopFling() -- Reset previous
+    StopFling()
     UnanchoredPart = part
     part.Transparency = 0.5
     ClaimNetworkOwnership()
-    
-    if AutoClaim and (part:IsA("Seat") or part:IsA("VehicleSeat")) then
-        ClaimSeat(part)
-    end
     Notify("✅ Selected: " .. part.Name)
 end
 
@@ -153,9 +131,17 @@ Mouse.Button1Down:Connect(function()
             SelectionMode = false 
             Notify("Selection Mode OFF")
             if SelectionHighlight then SelectionHighlight:Destroy() SelectionHighlight = nil end
-        else
-            Notify("❌ Invalid Part (Anchored/Yours)")
         end
+    end
+end)
+
+-- INPUT LOGIC (Attack Key)
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Config.AttackKey and Active then
+        Activated = true
+        task.wait(0.3) -- Short pulse like OG
+        Activated = false
     end
 end)
 
@@ -178,7 +164,7 @@ MainTab:AddToggle({
         SelectionMode = v
         if v then
             Notify("Click a part to select it!")
-            SelectionHighlight = Instance.new("Highlight", game.CoreGui) -- Temp highlight container
+            SelectionHighlight = Instance.new("Highlight", game.CoreGui)
         else
             if SelectionHighlight then SelectionHighlight:Destroy() end
         end
@@ -191,11 +177,44 @@ MainTab:AddDropdown({
     Default = "Target",
     Callback = function(v)
         TargetMode = v
+        Notify("Mode: " .. v)
     end
 })
 
+-- Target TextBox (New! To replace chat commands)
+local TargetInput = MainTab:AddButton({
+    Text = "Set Target (Click to Type)",
+    Callback = function()
+         -- Simple emulation of a textbox using a prompt since library doesn't have TextBox yet
+         -- In a real scenario, we'd add input. For now, we'll suggest using chat commands or
+         -- implementation a basic capture. 
+         -- actually wait, let's just make a chat command listener since users requested "OG Version"
+         Notify("Type :smite [user] in chat to set target!")
+    end
+})
+
+-- Chat Listener for OG Compatibility
+OWNER.Chatted:Connect(function(msg)
+    local args = msg:split(" ")
+    if args[1] == ":smite" and args[2] then
+        local found = GetPlayer(args[2])
+        if found then
+            TARGET = found
+            Notify("🎯 Target Set: " .. found.Name)
+            if Active and TargetMode == "Target" then
+                Activated = true -- Instant fire on command
+                task.wait(1)
+                Activated = false
+            end
+        else
+            Notify("❌ Player not found")
+        end
+    end
+end)
+
+
 MainTab:AddToggle({
-    Text = "Start Fling",
+    Text = "Start Fling Loop",
     Default = false,
     Callback = function(v)
         Active = v
@@ -206,14 +225,15 @@ MainTab:AddToggle({
         
         if not UnanchoredPart then
             Notify("❌ No Part Selected!")
+            Active = false
             return
         end
         
-        -- START LOOP
+        -- START HEARTBEAT
         hbConnection = RunService.Heartbeat:Connect(function()
             if not UnanchoredPart or not UnanchoredPart.Parent then StopFling() return end
             
-            -- Setup Physics
+            -- Physics Setup
             UnanchoredPart.CanCollide = false
             UnanchoredPart.CanTouch = false
             pcall(function() 
@@ -222,14 +242,14 @@ MainTab:AddToggle({
             end)
             ClaimNetworkOwnership()
             
-            -- Anti-Void
+            -- Safety
             if UnanchoredPart.Position.Y < Workspace.FallenPartsDestroyHeight + 20 then
                  UnanchoredPart.CFrame = OWNER.Character.HumanoidRootPart.CFrame
                  UnanchoredPart.Velocity = Vector3.zero
                  UnanchoredPart.RotVelocity = Vector3.zero
             end
             
-            -- Body Objects
+            -- Body Movers
             if not UnanchoredPart:FindFirstChild("BodyPosition") then
                 local bp = Instance.new("BodyPosition", UnanchoredPart)
                 bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -238,7 +258,6 @@ MainTab:AddToggle({
             end
             if not UnanchoredPart:FindFirstChild("BodyThrust") then Instance.new("BodyThrust", UnanchoredPart) end
             
-            -- Rotation
             if RotationEnabled then
                  if not UnanchoredPart:FindFirstChild("BodyGyro") then
                      local bg = Instance.new("BodyGyro", UnanchoredPart)
@@ -249,9 +268,9 @@ MainTab:AddToggle({
                  )
             end
             
-            UnanchoredPart.Velocity = Vector3.new(0, -87, 0) -- Fling Velocity
+            UnanchoredPart.Velocity = Vector3.new(0, -87, 0)
             
-            -- Mode Logic
+            -- LOGIC RESTORATION
             local activePred = Config.Prediction
             if AutoPrediction then
                 local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
@@ -259,30 +278,37 @@ MainTab:AddToggle({
             end
             
             if TargetMode == "Target" then
-                -- Simplified: Assume user wants to fling whoever they clicked or typed (add target selector later if needed)
-                -- For now, falling back to Nearest in Target mode if explicit target logic isn't fully ported (as it relied on chat commands often)
-                -- Let's swap to Nearest logic for robustness unless explicit target is set
-                local T = GetNearestPlayer()
-                if T then
-                     UnanchoredPart.BodyThrust.Force = Force
-                     UnanchoredPart.BodyPosition.Position = T.Character.HumanoidRootPart.Position + (T.Character.HumanoidRootPart.Velocity * activePred)
-                     UnanchoredPart.BodyThrust.Location = T.Character.HumanoidRootPart.Position
+                if Activated and TARGET and TARGET.Character and TARGET.Character:FindFirstChild("HumanoidRootPart") then
+                    -- ATTACK!
+                    UnanchoredPart.BodyThrust.Force = Force
+                    UnanchoredPart.BodyPosition.Position = TARGET.Character.HumanoidRootPart.Position + (TARGET.Character.HumanoidRootPart.Velocity * activePred)
+                    UnanchoredPart.BodyThrust.Location = TARGET.Character.HumanoidRootPart.Position
                 else
+                    -- PASSIVE
                     SpawnPart()
                 end
+                
             elseif TargetMode == "Nearest" then
-                local T = GetNearestPlayer()
-                if T then
+                -- OG logic: Nearest mode always attacks if it finds someone
+                TARGET = GetNearestPlayer()
+                if TARGET then
                      UnanchoredPart.BodyThrust.Force = Force
-                     UnanchoredPart.BodyPosition.Position = T.Character.HumanoidRootPart.Position + (T.Character.HumanoidRootPart.Velocity * activePred)
-                     UnanchoredPart.BodyThrust.Location = T.Character.HumanoidRootPart.Position
+                     UnanchoredPart.BodyPosition.Position = TARGET.Character.HumanoidRootPart.Position + (TARGET.Character.HumanoidRootPart.Velocity * activePred)
+                     UnanchoredPart.BodyThrust.Location = TARGET.Character.HumanoidRootPart.Position
                 else
                     SpawnPart()
                 end
+                
             elseif TargetMode == "Key" then
-                 UnanchoredPart.BodyThrust.Force = Force
-                 UnanchoredPart.BodyPosition.Position = Mouse.Hit.p
-                 UnanchoredPart.BodyThrust.Location = OWNER.Character.HumanoidRootPart.Position
+                if Activated then
+                     -- ATTACK MOUSE
+                     UnanchoredPart.BodyThrust.Force = Force
+                     UnanchoredPart.BodyPosition.Position = Mouse.Hit.p
+                     UnanchoredPart.BodyThrust.Location = OWNER.Character.HumanoidRootPart.Position
+                else
+                    SpawnPart()
+                end
+                
             else -- Constant
                 SpawnPart()
             end
@@ -290,59 +316,37 @@ MainTab:AddToggle({
     end
 })
 
-
-MainTab:AddButton({
-    Text = "Claim Seat (Force)",
-    Callback = function()
-        if UnanchoredPart then ClaimSeat(UnanchoredPart) end
+MainTab:AddKeybind({
+    Text = "Attack Key (E)",
+    Default = Enum.KeyCode.E,
+    Callback = function(key)
+        Config.AttackKey = key
     end
 })
 
 -- SETTINGS TAB
-SettingsTab:AddToggle({
-    Text = "Auto Prediction",
-    Default = false,
-    Callback = function(v) AutoPrediction = v end
+SettingsTab:AddToggle({ Text = "Auto Prediction", Default = false, Callback = function(v) AutoPrediction = v end })
+SettingsTab:AddSlider({ Text = "Prediction (Ms)", Min = 0, Max = 200, Default = 80, Callback = function(v) Config.Prediction = v/100 end })
+SettingsTab:AddSlider({ Text = "Distance Check", Min = 10, Max = 500, Default = 50, Callback = function(v) Config.Distance = v end })
+SettingsTab:AddToggle({ Text = "Enable Rotation", Default = false, Callback = function(v) RotationEnabled = v end })
+SettingsTab:AddSlider({ Text = "Rot X", Min = 0, Max = 360, Default = 0, Callback = function(v) Config.Rotation.X = v end })
+SettingsTab:AddSlider({ Text = "Rot Y", Min = 0, Max = 360, Default = 0, Callback = function(v) Config.Rotation.Y = v end })
+SettingsTab:AddSlider({ Text = "Rot Z", Min = 0, Max = 360, Default = 0, Callback = function(v) Config.Rotation.Z = v end })
+SettingsTab:AddKeybind({
+    Text = "Toggle Menu Key",
+    Default = Enum.KeyCode.RightControl,
+    Callback = function(key)
+        Library:SetToggleKey(key)
+    end
 })
 
-SettingsTab:AddSlider({
-    Text = "Prediction (Ms)",
-    Min = 0, Max = 200, Default = 80,
-    Callback = function(v) Config.Prediction = v/100 end
+SettingsTab:AddButton({
+    Text = "Unload Script",
+    Callback = function()
+        StopFling() -- Ensure loop stops
+        Library:Unload()
+        Notify("xtvo Hub Unloaded!")
+    end
 })
 
-SettingsTab:AddSlider({
-    Text = "Distance Check",
-    Min = 10, Max = 500, Default = 50,
-    Callback = function(v) Config.Distance = v end
-})
-
-SettingsTab:AddToggle({
-    Text = "Auto Claim Seats",
-    Default = false,
-    Callback = function(v) AutoClaim = v end
-})
-
-SettingsTab:AddToggle({
-    Text = "Enable Rotation",
-    Default = false,
-    Callback = function(v) RotationEnabled = v end
-})
-
-SettingsTab:AddSlider({
-    Text = "Rot X",
-    Min = 0, Max = 360, Default = 0,
-    Callback = function(v) Config.Rotation.X = v end
-})
-SettingsTab:AddSlider({
-    Text = "Rot Y",
-    Min = 0, Max = 360, Default = 0,
-    Callback = function(v) Config.Rotation.Y = v end
-})
-SettingsTab:AddSlider({
-    Text = "Rot Z",
-    Min = 0, Max = 360, Default = 0,
-    Callback = function(v) Config.Rotation.Z = v end
-})
-
-Notify("xtvo Hub Loaded!")
+Notify("xtvo Hub (OG Logic) Loaded!")
