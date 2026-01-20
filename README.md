@@ -14,11 +14,8 @@ Check out [DOCUMENTATION.md](DOCUMENTATION.md) for the full API reference.
 
 **Quick Start:**
 ```lua
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xtvoo/uilib/main/xtvoLib.lua"))()
-
-local Window = Library:CreateWindow({
-    Title = "xtvo Hub"
-})
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xtvoo/uilib/main/Loader.lua"))()
+```
 
 local Tab = Window:AddTab("Main")
 
