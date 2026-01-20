@@ -47,6 +47,8 @@ local function LoadFlingHub()
     local Activated = false
     local AutoPrediction = false
     local RotationEnabled = false
+    local Whitelist = {}
+    local OriginalVelocity = {}
 
     -- Settings
     local Config = {
@@ -64,6 +66,19 @@ local function LoadFlingHub()
     -- ... [Helper Functions same as before, condensed for loader] ...
     local function ClaimNetworkOwnership()
         if UnanchoredPart then pcall(function() UnanchoredPart:SetNetworkOwner(OWNER) end) end
+    end
+
+    local function Velocity(Plr)
+        if Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart") then
+            local CPosition = Plr.Character.HumanoidRootPart.Position
+            local LastTick = tick()
+            task.wait()
+            local NPosition = Plr.Character.HumanoidRootPart.Position
+            local NextTick = tick()
+            local Offset = (NPosition - CPosition)
+            local Elapsed = NextTick - LastTick
+            return Offset / Elapsed
+        end
     end
     
     local function GetPlayer(str)
@@ -127,6 +142,14 @@ local function LoadFlingHub()
         if v then Library:Notify("Click PART to select!") else if SelectionHighlight then SelectionHighlight:Destroy() end end
     end})
     
+    MainTab:AddButton({Text = "Refresh Ownership", Callback = function() ClaimNetworkOwnership() Library:Notify("🔄 Ownership Refreshed") end})
+    MainTab:AddButton({Text = "TP to Part", Callback = function() 
+        if UnanchoredPart and OWNER.Character and OWNER.Character:FindFirstChild("HumanoidRootPart") then
+            OWNER.Character.HumanoidRootPart.CFrame = UnanchoredPart.CFrame
+            Library:Notify("✈️ Teleported")
+        else Library:Notify("❌ No Part/Character") end
+    end})
+
     MainTab:AddDropdown({Text = "Target Mode", Options = {"Target", "Nearest", "Key", "Constant"}, Default = "Target", Callback = function(v) TargetMode = v end})
     
     MainTab:AddToggle({Text = "Start Fling Loop", Default = false, Callback = function(v)
@@ -157,15 +180,19 @@ local function LoadFlingHub()
                  UnanchoredPart.BodyGyro.CFrame = CFrame.Angles(math.rad(Config.Rotation.X), math.rad(Config.Rotation.Y), math.rad(Config.Rotation.Z))
             end
             UnanchoredPart.Velocity = Vector3.new(0, -87, 0)
+            
+            -- Use tracked velocity if available
+            local targetVel = Vector3.zero
+            if OriginalVelocity[1] then targetVel = OriginalVelocity[1] end
 
             local activePred = Config.Prediction
             if AutoPrediction then activePred = (Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000) + 0.15 end
 
             -- LOGIC
             if TargetMode == "Target" then
-                if Activated and TARGET and TARGET.Character then
+                if Activated and TARGET and TARGET.Character and TARGET.Character:FindFirstChild("HumanoidRootPart") then
                      UnanchoredPart.BodyThrust.Force = Force
-                     UnanchoredPart.BodyPosition.Position = TARGET.Character.HumanoidRootPart.Position + (TARGET.Character.HumanoidRootPart.Velocity * activePred)
+                     UnanchoredPart.BodyPosition.Position = TARGET.Character.HumanoidRootPart.Position + (targetVel * activePred)
                      UnanchoredPart.BodyThrust.Location = TARGET.Character.HumanoidRootPart.Position
                 else SpawnPart() end
             elseif TargetMode == "Nearest" then
@@ -199,9 +226,31 @@ local function LoadFlingHub()
     
     OWNER.Chatted:Connect(function(msg)
         local args = msg:split(" ")
-        if args[1] == ":smite" and args[2] then
+        local cmd = args[1]:lower()
+        if cmd == ":smite" and args[2] then
              local found = GetPlayer(args[2])
              if found then TARGET = found Library:Notify("🎯 Target: " .. found.Name) end
+        elseif cmd == ":w" and args[2] then
+             local found = GetPlayer(args[2])
+             if found then table.insert(Whitelist, found.Name) Library:Notify("✅ Whitelisted: " .. found.Name) end
+        elseif cmd == ":uw" and args[2] then
+             local found = GetPlayer(args[2])
+             if found then 
+                for i,v in pairs(Whitelist) do if v == found.Name then table.remove(Whitelist, i) end end
+                Library:Notify("❌ Unwhitelisted: " .. found.Name) 
+             end
+        end
+    end)
+    
+    -- Velocity Tracker
+    RunService.Heartbeat:Connect(function()
+        if TARGET and typeof(TARGET) == "Instance" and TARGET.Character and TARGET.Character:FindFirstChild("HumanoidRootPart") then
+            local root = TARGET.Character.HumanoidRootPart
+            local oldPos = root.Position
+            task.wait() -- yield one frame
+            local newPos = root.Position -- update
+            -- simple calc (actual delta time would be better but this mimics OG)
+            OriginalVelocity[1] = (newPos - oldPos) / RunService.Heartbeat:Wait() 
         end
     end)
 
